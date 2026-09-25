@@ -1021,23 +1021,28 @@ def _create_purchase_invoice_from_receipt(pr_name, marker, title):
     return pi.name
 
 
-def _create_cycle_request(company, brand, cost_center, kitchen, selection, marker):
+def _create_cycle_request(company, brand, cost_center, outlet, selection, marker):
+    title = "%s | %s | %s | Finished Item Request" % (marker, brand, selection["menu_name"])
+    existing = _get_demo_doc("Material Request", marker, title=title)
+    if existing:
+        return frappe.get_doc("Material Request", existing)
+
     mr = frappe.new_doc("Material Request")
     _set(mr, "company", company)
     _set(mr, "purpose", "Material Transfer")
     _set(mr, "material_request_type", "Material Transfer")
     _set(mr, "transaction_date", today())
     _set(mr, "schedule_date", today())
-    _set(mr, "title", "%s | %s | %s" % (marker, brand, selection["menu_name"]))
+    _set(mr, "title", title)
     _set(mr, "remarks", marker)
     _set(mr, "cost_center", cost_center)
-    for item_code, qty in selection["components"]:
-        row = mr.append("items", {})
-        _set(row, "item_code", item_code)
-        _set(row, "qty", qty)
-        _set(row, "warehouse", kitchen)
-        _set(row, "schedule_date", today())
-        _set(row, "cost_center", cost_center)
+    row = mr.append("items", {})
+    _set(row, "item_code", selection["menu_code"])
+    _set(row, "qty", selection["portions"])
+    _set(row, "warehouse", outlet)
+    _set(row, "target_warehouse", outlet)
+    _set(row, "schedule_date", today())
+    _set(row, "cost_center", cost_center)
     mr.insert(ignore_permissions=True)
     mr.submit()
     return mr
@@ -1166,10 +1171,11 @@ def _create_delivery_invoice(company, customer, cost_center, warehouse, price_li
 def create_full_demo(cycles=100, dry_run=True, confirm_demo_site=False, company=None):
     """Create repeatable full-cycle transactions; dry-run is the default.
 
-    Each cycle creates a brand-tagged Material Request, raw material transfer,
-    BOM-based Manufacture Stock Entry, finished-product transfer, Delivery Note
-    and linked Sales Invoice. One Purchase MR -> PO -> PR -> PI chain supplies a
-    10% buffer above the selected cycles' recipe demand.
+    Each cycle creates a brand-tagged finished-item Material Request, internal
+    raw material transfer, BOM-based Manufacture Stock Entry, finished-product
+    transfer to the branch outlet, Delivery Note and linked Sales Invoice. One
+    Purchase MR -> PO -> PR -> PI chain supplies a 10% buffer above the selected
+    cycles' recipe demand.
     """
     cycles = int(cycles)
     if cycles < 1 or cycles > 500:
@@ -1217,18 +1223,19 @@ def create_full_demo(cycles=100, dry_run=True, confirm_demo_site=False, company=
         if _get_demo_doc("Sales Invoice", marker, docstatus=1):
             skipped += 1
             continue
-        partial = _get_demo_doc("Material Request", marker, title_like=marker + "%")
+        finished_request_title = "%s | %s | %s | Finished Item Request" % (marker, brand, selection["menu_name"])
+        partial = _get_demo_doc("Material Request", marker, title=finished_request_title)
         if partial:
             frappe.throw("Cycle %03d has a requisition but no submitted invoice (%s). Inspect it before rerunning." % (index, partial))
 
         cost_center = cost_centers[brand]
         kitchen = warehouses["central_kitchen"]
         outlet = warehouses[brand]
-        request = _create_cycle_request(company, brand, cost_center, kitchen, selection, marker)
+        request = _create_cycle_request(company, brand, cost_center, outlet, selection, marker)
         counts["Material Request"] += 1
-        raw_lines = [(code, qty, request.items[pos]) for pos, (code, qty) in enumerate(selection["components"])]
+        raw_lines = [(code, qty, None) for code, qty in selection["components"]]
         raw_transfer = _create_transfer(
-            company, warehouses["central_store"], kitchen, cost_center, raw_lines, marker + " raw transfer", request
+            company, warehouses["central_store"], kitchen, cost_center, raw_lines, marker + " raw transfer"
         )
         counts["Stock Entry"] += 1
         manufacture = _create_manufacture(company, cost_center, kitchen, selection, marker + " BOM consumption")
@@ -1238,8 +1245,9 @@ def create_full_demo(cycles=100, dry_run=True, confirm_demo_site=False, company=
             kitchen,
             outlet,
             cost_center,
-            [(selection["menu_code"], selection["portions"], None)],
+            [(selection["menu_code"], selection["portions"], request.items[0] if request.items else None)],
             marker + " finished goods transfer",
+            request,
         )
         counts["Stock Entry"] += 1
         dn, invoice = _create_delivery_invoice(

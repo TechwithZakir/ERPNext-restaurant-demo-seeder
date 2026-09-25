@@ -110,6 +110,46 @@ company containing real transactions.
 For a non-destructive cleanup attempt, omit `hard_delete`; ERPNext may retain
 records blocked by submitted-document or repost-processing locks.
 
+## Use-case Test Steps
+
+Run the smoke test first so every brand is covered with a small data set:
+
+```bash
+bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.create_full_demo --kwargs "{'cycles': 4, 'dry_run': False, 'confirm_demo_site': True}"
+```
+
+Use one cycle for a complete business test. In ERPNext, open the generated
+documents and verify this sequence:
+
+1. In `Material Request`, select a request with purpose `Material Transfer`.
+   Confirm that the requesting brand/outlet asks for a finished menu item, not
+   raw materials, and that the target warehouse is the brand outlet.
+2. In `Stock Entry`, open the linked finished-goods transfer. Confirm the
+   source is `Central Kitchen`, the target is the brand outlet, and the item is
+   the requested finished food.
+3. Open the raw-material transfer. Confirm the source is `Central Store`, the
+   target is `Central Kitchen`, and the rows contain ingredients used by the
+   menu item's BOM.
+4. Open the manufacture/consumption Stock Entry. Confirm raw materials are
+   consumed from `Central Kitchen` and the finished menu item is produced there.
+5. Open the `Delivery Note`. Confirm the delivered item is the finished food,
+   the warehouse is the requesting outlet, and the brand cost center is set.
+6. Open the linked `Sales Invoice`. Confirm the customer, BDT selling price,
+   brand cost center, and submitted status. The invoice should remain
+   outstanding because the demo does not create Payment Entries.
+7. Check `Stock Balance` or the stock ledger. Central Store should decrease by
+   transferred ingredients, Central Kitchen should show consumption and
+   finished-food movement, and the outlet should receive the finished item.
+8. Check the `General Ledger` or profit and loss report filtered by each brand
+   cost center. Revenue and stock-related accounting should be separated by
+   brand.
+
+Expected result: each generated cycle contains one finished-item requisition,
+three stock entries (raw transfer, manufacture/consumption, finished transfer),
+one Delivery Note, and one Sales Invoice. A 100-cycle run should report
+`cycles_created: 100`, `Material Request: 100`, `Stock Entry: 300`,
+`Delivery Note: 100`, and `Sales Invoice: 100`.
+
 ## Demo Checklist
 
 Show these in ERPNext:

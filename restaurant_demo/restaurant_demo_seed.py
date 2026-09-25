@@ -863,9 +863,10 @@ def _lifecycle_selections(cycles):
 def _create_procurement_cycle(company, supplier, central_store, demand):
     """Create one linked Purchase MR -> PO -> Purchase Receipt -> Invoice chain."""
     marker = "%s CYCLES PROCUREMENT" % DEMO_PREFIX
+    title = "DEMO - Raw Material Procurement for Lifecycle Dataset"
     existing_po = _get_demo_doc("Purchase Order", marker, docstatus=1)
     if existing_po:
-        pr_name = frappe.db.get_value("Purchase Receipt", {"purchase_order": existing_po, "docstatus": 1}, "name")
+        pr_name = _get_demo_doc("Purchase Receipt", marker, docstatus=1)
         pi_name = _get_demo_doc("Purchase Invoice", marker, docstatus=1)
         if not pr_name or not pi_name:
             frappe.throw("The demo procurement chain is incomplete. Inspect the existing Purchase Order before rerunning.")
@@ -875,6 +876,9 @@ def _create_procurement_cycle(company, supplier, central_store, demand):
             "purchase_invoice": pi_name,
             "created": False,
         }
+    existing_mr = _get_demo_doc("Material Request", marker, docstatus=1, title=title)
+    if existing_mr:
+        frappe.throw("The demo procurement Material Request already exists without a complete submitted PO/receipt/invoice chain (%s). Inspect it before rerunning." % existing_mr)
 
     amounts = {key: max(1, math.ceil(qty * 1.10)) for key, qty in demand.items()}
     rates = {key: rate for key, _label, _uom, _opening, rate in INGREDIENTS}
@@ -886,7 +890,7 @@ def _create_procurement_cycle(company, supplier, central_store, demand):
     _set(mr, "material_request_type", "Purchase")
     _set(mr, "transaction_date", today())
     _set(mr, "schedule_date", today())
-    _set(mr, "title", "DEMO - Raw Material Procurement for Lifecycle Dataset")
+    _set(mr, "title", title)
     _set(mr, "remarks", marker)
     for key, qty in sorted(amounts.items()):
         row = mr.append("items", {})
@@ -903,6 +907,7 @@ def _create_procurement_cycle(company, supplier, central_store, demand):
     _set(po, "transaction_date", today())
     _set(po, "schedule_date", today())
     _set(po, "currency", "BDT")
+    _set(po, "title", title)
     _set(po, "buying_price_list", "DEMO - Restaurant BDT Buying")
     _set(po, "price_list_currency", "BDT")
     _set(po, "conversion_rate", 1)
@@ -931,6 +936,7 @@ def _create_procurement_cycle(company, supplier, central_store, demand):
 
     pr = make_purchase_receipt(po.name)
     _set(pr, "posting_date", today())
+    _set(pr, "title", title)
     _set(pr, "remarks", marker)
     if hasattr(pr, "set_missing_values"):
         pr.set_missing_values()
@@ -940,6 +946,7 @@ def _create_procurement_cycle(company, supplier, central_store, demand):
     from erpnext.stock.doctype.purchase_receipt.purchase_receipt import make_purchase_invoice
 
     pi = make_purchase_invoice(pr.name)
+    _set(pi, "title", title)
     _set(pi, "remarks", marker)
     if hasattr(pi, "set_missing_values"):
         pi.set_missing_values()
@@ -1074,7 +1081,10 @@ def _create_delivery_invoice(company, customer, cost_center, warehouse, price_li
 
     # Standard mapper keeps the Sales Invoice linked to its Delivery Note and
     # avoids deducting the same menu stock twice.
-    from erpnext.stock.doctype.delivery_note.mapper import make_sales_invoice
+    try:
+        from erpnext.stock.doctype.delivery_note.mapper import make_sales_invoice
+    except ImportError:
+        from erpnext.stock.doctype.delivery_note.delivery_note import make_sales_invoice
 
     invoice = make_sales_invoice(dn.name)
     _set(invoice, "remarks", marker)

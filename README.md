@@ -73,10 +73,11 @@ bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.create_ful
 
 ## Create the demo records
 
-Start with 10 cycles on a dedicated demo site, inspect the result, then run 100:
+Start with a 2-cycle smoke test on a dedicated demo site, inspect the result,
+then run 100:
 
 ```bash
-bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.create_full_demo --kwargs "{'cycles': 10, 'dry_run': False, 'confirm_demo_site': True}"
+bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.create_full_demo --kwargs "{'cycles': 2, 'dry_run': False, 'confirm_demo_site': True}"
 bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.create_full_demo --kwargs "{'cycles': 100, 'dry_run': False, 'confirm_demo_site': True}"
 ```
 

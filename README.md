@@ -14,16 +14,19 @@ uses a third-party POS app, install that app from its own compatible Git repo.
 Install the app from that Git repository, from the bench directory:
 
 ```bash
-bench get-app https://github.com/TechwithZakir/ERPNext-restaurant-demo-seeder.git
+bench get-app restaurant_demo https://github.com/TechwithZakir/ERPNext-restaurant-demo-seeder.git
 bench --site <demo-site> install-app restaurant_demo
 ```
 
 Your bench must already have Frappe and ERPNext installed on that same branch.
 Bench `get-app` fetches an app from Git; `install-app` installs it on a site.
+The `restaurant_demo` name before the Git URL tells bench to clone the repo
+directly into `apps/restaurant_demo`.
 
 If `bench get-app` fails with `Directory not empty` while renaming
 `apps/ERPNext-restaurant-demo-seeder` to `apps/restaurant_demo`, the app folder
-already exists in that bench. Update the existing app instead:
+already exists in that bench. Do not run `get-app` again; update the existing
+app instead:
 
 ```bash
 cd ~/frappe-bench

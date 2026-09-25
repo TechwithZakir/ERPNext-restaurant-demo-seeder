@@ -867,9 +867,11 @@ def _create_procurement_cycle(company, supplier, central_store, demand):
     existing_po = _get_demo_doc("Purchase Order", marker, docstatus=1)
     if existing_po:
         pr_name = _get_demo_doc("Purchase Receipt", marker, docstatus=1)
+        if not pr_name:
+            pr_name = _create_purchase_receipt_from_po(existing_po, marker, title)
         pi_name = _get_demo_doc("Purchase Invoice", marker, docstatus=1)
-        if not pr_name or not pi_name:
-            frappe.throw("The demo procurement chain is incomplete. Inspect the existing Purchase Order before rerunning.")
+        if not pi_name:
+            pi_name = _create_purchase_invoice_from_receipt(pr_name, marker, title)
         return {
             "purchase_order": existing_po,
             "purchase_receipt": pr_name,
@@ -932,20 +934,82 @@ def _create_procurement_cycle(company, supplier, central_store, demand):
     po.insert(ignore_permissions=True)
     po.submit()
 
-    from erpnext.buying.doctype.purchase_order.mapper import make_purchase_receipt
+    pr_name = _create_purchase_receipt_from_po(po.name, marker, title)
+    pi_name = _create_purchase_invoice_from_receipt(pr_name, marker, title)
 
-    pr = make_purchase_receipt(po.name)
+    return {"material_request": mr.name, "purchase_order": po.name, "purchase_receipt": pr_name, "purchase_invoice": pi_name, "created": True}
+
+
+def _create_purchase_receipt_from_po(po_name, marker, title):
+    try:
+        from erpnext.buying.doctype.purchase_order.purchase_order import make_purchase_receipt
+
+        pr = make_purchase_receipt(po_name)
+    except ImportError:
+        po = frappe.get_doc("Purchase Order", po_name)
+        pr = frappe.new_doc("Purchase Receipt")
+        _set(pr, "company", po.company)
+        _set(pr, "supplier", po.supplier)
+        _set(pr, "posting_date", today())
+        _set(pr, "set_warehouse", getattr(po, "set_warehouse", None))
+        _set(pr, "currency", getattr(po, "currency", None))
+        _set(pr, "buying_price_list", getattr(po, "buying_price_list", None))
+        _set(pr, "price_list_currency", getattr(po, "price_list_currency", None))
+        _set(pr, "conversion_rate", getattr(po, "conversion_rate", 1))
+        for po_item in po.get("items", []):
+            pending_qty = float(getattr(po_item, "qty", 0) or 0) - float(getattr(po_item, "received_qty", 0) or 0)
+            if pending_qty <= 0:
+                continue
+            row = pr.append("items", {})
+            _set(row, "item_code", po_item.item_code)
+            _set(row, "qty", pending_qty)
+            _set(row, "uom", getattr(po_item, "uom", None))
+            _set(row, "stock_uom", getattr(po_item, "stock_uom", None))
+            _set(row, "conversion_factor", getattr(po_item, "conversion_factor", 1))
+            _set(row, "rate", getattr(po_item, "rate", None))
+            _set(row, "warehouse", getattr(po_item, "warehouse", None) or getattr(po, "set_warehouse", None))
+            _set(row, "purchase_order", po.name)
+            _set(row, "purchase_order_item", po_item.name)
+            _set(row, "material_request", getattr(po_item, "material_request", None))
+            _set(row, "material_request_item", getattr(po_item, "material_request_item", None))
     _set(pr, "posting_date", today())
     _set(pr, "title", title)
     _set(pr, "remarks", marker)
     if hasattr(pr, "set_missing_values"):
         pr.set_missing_values()
+    if hasattr(pr, "calculate_taxes_and_totals"):
+        pr.calculate_taxes_and_totals()
     pr.insert(ignore_permissions=True)
     pr.submit()
+    return pr.name
 
-    from erpnext.stock.doctype.purchase_receipt.purchase_receipt import make_purchase_invoice
 
-    pi = make_purchase_invoice(pr.name)
+def _create_purchase_invoice_from_receipt(pr_name, marker, title):
+    try:
+        from erpnext.stock.doctype.purchase_receipt.purchase_receipt import make_purchase_invoice
+
+        pi = make_purchase_invoice(pr_name)
+    except ImportError:
+        pr = frappe.get_doc("Purchase Receipt", pr_name)
+        pi = frappe.new_doc("Purchase Invoice")
+        _set(pi, "company", pr.company)
+        _set(pi, "supplier", pr.supplier)
+        _set(pi, "posting_date", today())
+        _set(pi, "currency", getattr(pr, "currency", None))
+        _set(pi, "buying_price_list", getattr(pr, "buying_price_list", None))
+        _set(pi, "price_list_currency", getattr(pr, "price_list_currency", None))
+        _set(pi, "conversion_rate", getattr(pr, "conversion_rate", 1))
+        for pr_item in pr.get("items", []):
+            row = pi.append("items", {})
+            _set(row, "item_code", pr_item.item_code)
+            _set(row, "qty", getattr(pr_item, "qty", None))
+            _set(row, "uom", getattr(pr_item, "uom", None))
+            _set(row, "rate", getattr(pr_item, "rate", None))
+            _set(row, "warehouse", getattr(pr_item, "warehouse", None))
+            _set(row, "purchase_receipt", pr.name)
+            _set(row, "pr_detail", pr_item.name)
+            _set(row, "purchase_order", getattr(pr_item, "purchase_order", None))
+            _set(row, "purchase_order_item", getattr(pr_item, "purchase_order_item", None))
     _set(pi, "title", title)
     _set(pi, "remarks", marker)
     if hasattr(pi, "set_missing_values"):
@@ -954,8 +1018,7 @@ def _create_procurement_cycle(company, supplier, central_store, demand):
         pi.calculate_taxes_and_totals()
     pi.insert(ignore_permissions=True)
     pi.submit()
-
-    return {"material_request": mr.name, "purchase_order": po.name, "purchase_receipt": pr.name, "purchase_invoice": pi.name, "created": True}
+    return pi.name
 
 
 def _create_cycle_request(company, brand, cost_center, kitchen, selection, marker):

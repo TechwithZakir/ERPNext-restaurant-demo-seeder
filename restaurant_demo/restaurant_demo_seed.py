@@ -151,6 +151,15 @@ def _demo_doc_names(doctype):
     return names
 
 
+def _disable_demo_doc(doctype, name):
+    if not frappe.db.exists(doctype, name) or not _has_field(doctype, "disabled"):
+        return False
+    doc = frappe.get_doc(doctype, name)
+    doc.disabled = 1
+    doc.save(ignore_permissions=True)
+    return True
+
+
 def _apply_fields(doc, fields):
     for fieldname, value in fields.items():
         _set(doc, fieldname, value)
@@ -1374,7 +1383,7 @@ def clear_demo_data(dry_run=True, confirm_demo_site=False):
     if dry_run:
         return {"writes": False, "records": {doctype: len(names) for doctype, names in plan.items()}, "names": plan}
 
-    result = {"cancelled": {}, "deleted": {}, "skipped": {}}
+    result = {"cancelled": {}, "deleted": {}, "disabled": {}, "skipped": {}}
     for doctype in submitted_order:
         for name in plan.get(doctype, []):
             try:
@@ -1392,11 +1401,15 @@ def clear_demo_data(dry_run=True, confirm_demo_site=False):
                     frappe.delete_doc(doctype, name, ignore_permissions=True, force=True)
                     result["deleted"].setdefault(doctype, []).append(name)
             except Exception as exc:
-                result["skipped"].setdefault(doctype, []).append("%s: %s" % (name, exc))
+                if _disable_demo_doc(doctype, name):
+                    result["disabled"].setdefault(doctype, []).append(name)
+                else:
+                    result["skipped"].setdefault(doctype, []).append("%s: %s" % (name, exc))
     frappe.db.commit()
     return {
         "writes": True,
         "cancelled": {doctype: len(names) for doctype, names in result["cancelled"].items()},
         "deleted": {doctype: len(names) for doctype, names in result["deleted"].items()},
+        "disabled": {doctype: len(names) for doctype, names in result["disabled"].items()},
         "skipped": result["skipped"],
     }

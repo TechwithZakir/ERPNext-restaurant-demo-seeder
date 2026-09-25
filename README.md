@@ -28,7 +28,7 @@ git push -u origin main
 Then install the app from that Git repository, from the bench directory:
 
 ```bash
-bench get-app --branch <matching-version-branch> https://github.com/<your-org>/restaurant_demo.git
+bench get-app --branch https://github.com[/<your-org>/restaurant_demo](https://github.com/TechwithZakir/ERPNext-restaurant-demo-seeder.git
 bench --site <demo-site> install-app restaurant_demo
 ```
 

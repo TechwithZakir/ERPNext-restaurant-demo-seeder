@@ -93,6 +93,21 @@ def _set(doc, fieldname, value):
         doc.set(fieldname, value)
 
 
+def _get_demo_doc(doctype, marker, docstatus=None, title=None, title_like=None):
+    filters = {}
+    if docstatus is not None:
+        filters["docstatus"] = docstatus
+    if _has_field(doctype, "remarks"):
+        filters["remarks"] = marker
+    elif title and _has_field(doctype, "title"):
+        filters["title"] = title
+    elif title_like and _has_field(doctype, "title"):
+        filters["title"] = ["like", title_like]
+    else:
+        return None
+    return frappe.db.get_value(doctype, filters, "name")
+
+
 def _apply_fields(doc, fields):
     for fieldname, value in fields.items():
         _set(doc, fieldname, value)
@@ -577,7 +592,7 @@ def _create_opening_stock(company, balances):
         if not lines:
             continue
         marker = "%s opening stock %s" % (DEMO_PREFIX, warehouse)
-        exists = frappe.db.exists("Stock Reconciliation", {"remarks": marker, "docstatus": 1})
+        exists = _get_demo_doc("Stock Reconciliation", marker, docstatus=1)
         if exists:
             continue
         doc = frappe.new_doc("Stock Reconciliation")
@@ -600,7 +615,7 @@ def _create_opening_stock(company, balances):
 
 def _create_draft_request(company, purpose, title, rows):
     marker = "%s %s" % (DEMO_PREFIX, title)
-    existing = frappe.db.get_value("Material Request", {"remarks": marker, "docstatus": 0}, "name")
+    existing = _get_demo_doc("Material Request", marker, docstatus=0, title=title)
     if existing:
         return existing
     doc = frappe.new_doc("Material Request")
@@ -848,10 +863,10 @@ def _lifecycle_selections(cycles):
 def _create_procurement_cycle(company, supplier, central_store, demand):
     """Create one linked Purchase MR -> PO -> Purchase Receipt -> Invoice chain."""
     marker = "%s CYCLES PROCUREMENT" % DEMO_PREFIX
-    existing_po = frappe.db.get_value("Purchase Order", {"remarks": marker, "docstatus": 1}, "name")
+    existing_po = _get_demo_doc("Purchase Order", marker, docstatus=1)
     if existing_po:
         pr_name = frappe.db.get_value("Purchase Receipt", {"purchase_order": existing_po, "docstatus": 1}, "name")
-        pi_name = frappe.db.get_value("Purchase Invoice", {"remarks": marker, "docstatus": 1}, "name")
+        pi_name = _get_demo_doc("Purchase Invoice", marker, docstatus=1)
         if not pr_name or not pi_name:
             frappe.throw("The demo procurement chain is incomplete. Inspect the existing Purchase Order before rerunning.")
         return {
@@ -1126,10 +1141,10 @@ def create_full_demo(cycles=100, dry_run=True, confirm_demo_site=False, company=
         index = selection["index"]
         brand = selection["brand"]
         marker = "%s CYCLE %03d" % (DEMO_PREFIX, index)
-        if frappe.db.exists("Sales Invoice", {"remarks": marker, "docstatus": 1}):
+        if _get_demo_doc("Sales Invoice", marker, docstatus=1):
             skipped += 1
             continue
-        partial = frappe.db.get_value("Material Request", {"remarks": marker}, "name")
+        partial = _get_demo_doc("Material Request", marker, title_like=marker + "%")
         if partial:
             frappe.throw("Cycle %03d has a requisition but no submitted invoice (%s). Inspect it before rerunning." % (index, partial))
 

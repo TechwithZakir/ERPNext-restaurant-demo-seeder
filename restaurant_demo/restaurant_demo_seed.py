@@ -138,6 +138,10 @@ def _demo_name_filters(doctype):
             filters.append({label_field: ["like", "demo_restaurant_%"]})
         else:
             filters.append({label_field: ["like", "DEMO -%"]})
+    if doctype == "Work Order":
+        for fieldname in ("description", "remarks"):
+            if _has_field(doctype, fieldname):
+                filters.append({fieldname: ["like", DEMO_PREFIX + "%"]})
     if doctype in ("Warehouse", "Cost Center", "POS Profile"):
         filters.append({"name": ["like", "DEMO -%"]})
     if doctype == "Warehouse" and _has_field(doctype, "warehouse_name"):
@@ -818,7 +822,7 @@ def _create_draft_request(company, purpose, title, rows):
 
 def _preflight(company):
     blockers = []
-    for doctype in ("POS Profile", "Item", "Item Price", "Material Request", "Stock Reconciliation", "BOM"):
+    for doctype in ("POS Profile", "Item", "Item Price", "Material Request", "Stock Reconciliation", "BOM", "Work Order"):
         if not frappe.db.exists("DocType", doctype):
             blockers.append("Required ERPNext DocType is unavailable: %s" % doctype)
     if not _cash_account(company):
@@ -1005,7 +1009,7 @@ def create_demo_setup(dry_run=True, confirm_demo_site=False, company=None):
             "Open POS and choose one of the DEMO POS profiles; item thumbnails and BDT prices are ready.",
             "Review and submit the Brand 01 Daily Requisition, then create a Material Transfer Stock Entry from Central Store to the outlet.",
             "Review the Central Kitchen Prep Requisition, transfer its ingredients into Central Kitchen, then open a menu item's BOM and demonstrate recipe ingredients.",
-            "Create a Work Order/Manufacture entry if you want to show production live; its BOM source warehouse is Central Kitchen.",
+            "Review the submitted Work Order and linked Manufacture entry; its BOM source warehouse is Central Kitchen.",
             "Run POS sales live to populate sales and brand Cost Center reporting.",
         ],
     }
@@ -1253,7 +1257,46 @@ def _create_transfer(company, source, target, cost_center, lines, marker, materi
     return entry
 
 
-def _create_manufacture(company, cost_center, kitchen, selection, marker):
+def _create_work_order(company, cost_center, kitchen, selection, marker):
+    if not frappe.db.exists("DocType", "Work Order"):
+        return None
+    filters = {"production_item": selection["menu_code"], "docstatus": ["<", 2]}
+    for fieldname in ("description", "remarks"):
+        if _has_field("Work Order", fieldname):
+            filters[fieldname] = marker
+            break
+    existing = frappe.db.get_value("Work Order", filters, "name")
+    if existing:
+        work_order = frappe.get_doc("Work Order", existing)
+        if work_order.docstatus == 0:
+            work_order.submit()
+        return work_order
+
+    bom = frappe.db.get_value(
+        "BOM", {"item": selection["menu_code"], "is_active": 1, "is_default": 1}, "name"
+    )
+    if not bom:
+        frappe.throw("No active default BOM found for %s." % selection["menu_code"])
+    work_order = frappe.new_doc("Work Order")
+    _set(work_order, "company", company)
+    _set(work_order, "production_item", selection["menu_code"])
+    _set(work_order, "bom_no", bom)
+    _set(work_order, "qty", selection["portions"])
+    _set(work_order, "stock_uom", "Nos")
+    _set(work_order, "fg_warehouse", kitchen)
+    _set(work_order, "wip_warehouse", kitchen)
+    _set(work_order, "source_warehouse", kitchen)
+    _set(work_order, "planned_start_date", today())
+    _set(work_order, "planned_end_date", today())
+    _set(work_order, "cost_center", cost_center)
+    _set(work_order, "description", marker)
+    _set(work_order, "remarks", marker)
+    work_order.insert(ignore_permissions=True)
+    work_order.submit()
+    return work_order
+
+
+def _create_manufacture(company, cost_center, kitchen, selection, marker, work_order=None):
     item_code = selection["menu_code"]
     bom = frappe.db.get_value("BOM", {"item": item_code, "is_active": 1, "is_default": 1}, "name")
     if not bom:
@@ -1264,6 +1307,8 @@ def _create_manufacture(company, cost_center, kitchen, selection, marker):
     _set(entry, "stock_entry_type", "Manufacture")
     _set(entry, "from_bom", 1)
     _set(entry, "bom_no", bom)
+    if work_order:
+        _set(entry, "work_order", work_order.name)
     _set(entry, "fg_completed_qty", selection["portions"])
     _set(entry, "to_warehouse", kitchen)
     _set(entry, "posting_date", today())
@@ -1351,7 +1396,7 @@ def create_full_demo(cycles=100, dry_run=True, confirm_demo_site=False, company=
     """Create repeatable full-cycle transactions; dry-run is the default.
 
     Each cycle creates a brand-tagged finished-item Material Request, internal
-    raw material transfer, BOM-based Manufacture Stock Entry, finished-product
+    raw material transfer, submitted Work Order, BOM-based Manufacture Stock Entry, finished-product
     transfer to the branch outlet, Delivery Note and linked Sales Invoice. One
     Purchase MR -> PO -> PR -> PI chain supplies a 10% buffer above the selected
     cycles' recipe demand.
@@ -1366,12 +1411,13 @@ def create_full_demo(cycles=100, dry_run=True, confirm_demo_site=False, company=
         return {
             "company": company,
             "cycles_requested": cycles,
-            "expected_total_lifecycle_documents": cycles * 6 + 4,
+            "expected_total_lifecycle_documents": cycles * 7 + 4,
             "expected_documents": {
                 "Material Request": cycles + 1,
                 "Purchase Order": 1,
                 "Purchase Receipt": 1,
                 "Purchase Invoice": 1,
+                "Work Order": cycles,
                 "Stock Entry": cycles * 3,
                 "Delivery Note": cycles,
                 "Sales Invoice": cycles,
@@ -1391,7 +1437,7 @@ def create_full_demo(cycles=100, dry_run=True, confirm_demo_site=False, company=
     customer = _ensure_customer()
     price_list = "DEMO - Restaurant BDT"
 
-    counts = {"Material Request": 0, "Stock Entry": 0, "Delivery Note": 0, "Sales Invoice": 0}
+    counts = {"Material Request": 0, "Work Order": 0, "Stock Entry": 0, "Delivery Note": 0, "Sales Invoice": 0}
     completed = 0
     skipped = 0
     examples = []
@@ -1417,7 +1463,12 @@ def create_full_demo(cycles=100, dry_run=True, confirm_demo_site=False, company=
             company, warehouses["central_store"], kitchen, cost_center, raw_lines, marker + " raw transfer"
         )
         counts["Stock Entry"] += 1
-        manufacture = _create_manufacture(company, cost_center, kitchen, selection, marker + " BOM consumption")
+        work_order = _create_work_order(company, cost_center, kitchen, selection, marker + " production")
+        if work_order:
+            counts["Work Order"] += 1
+        manufacture = _create_manufacture(
+            company, cost_center, kitchen, selection, marker + " BOM consumption", work_order
+        )
         counts["Stock Entry"] += 1
         finished_transfer = _create_transfer(
             company,
@@ -1442,6 +1493,7 @@ def create_full_demo(cycles=100, dry_run=True, confirm_demo_site=False, company=
                     "brand": brand,
                     "material_request": request.name,
                     "raw_transfer": raw_transfer.name,
+                    "work_order": work_order.name if work_order else None,
                     "manufacture": manufacture.name,
                     "finished_transfer": finished_transfer.name,
                     "delivery_note": dn.name,
@@ -1532,6 +1584,7 @@ def clear_demo_data(dry_run=True, confirm_demo_site=False, hard_delete=False):
         "Sales Invoice",
         "Delivery Note",
         "Stock Entry",
+        "Work Order",
         "Purchase Invoice",
         "Purchase Receipt",
         "Purchase Order",

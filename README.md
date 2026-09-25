@@ -17,10 +17,11 @@ The demo follows this operating model:
 2. Central Kitchen receives the finished-item requisition.
 3. Raw materials are transferred internally from Central Store to Central
    Kitchen.
-4. BOM-based manufacture consumes raw materials and produces finished food.
-5. Finished food is transferred from Central Kitchen to the requesting branch
+4. Central Kitchen creates a Work Order from the finished item's BOM.
+5. BOM-based manufacture consumes raw materials and produces finished food.
+6. Finished food is transferred from Central Kitchen to the requesting branch
    outlet warehouse.
-6. Delivery Note and Sales Invoice show the sale under the brand cost center.
+7. Delivery Note and Sales Invoice show the sale under the brand cost center.
 
 Raw materials are not the branch requisition. Raw materials are internal kitchen
 consumption driven by the recipe/BOM.
@@ -34,6 +35,7 @@ consumption driven by the recipe/BOM.
 - BDT selling and buying prices
 - Local PNG item thumbnails
 - Recipe BOMs
+- Submitted Work Orders for kitchen production
 - Opening stock
 - Finished-item branch requisitions
 - Purchase MR -> Purchase Order -> Purchase Receipt -> Purchase Invoice
@@ -142,24 +144,29 @@ documents and verify this sequence:
 3. Open the raw-material transfer. Confirm the source is `Central Store`, the
    target is `Central Kitchen`, and the rows contain ingredients used by the
    menu item's BOM.
-4. Open the manufacture/consumption Stock Entry. Confirm raw materials are
-   consumed from `Central Kitchen` and the finished menu item is produced there.
-5. Open the `Delivery Note`. Confirm the delivered item is the finished food,
+4. Open the submitted `Work Order`. Confirm the production item is the
+   requested finished food, the BOM is selected, quantity matches the request,
+   and both WIP and finished-goods warehouses are `Central Kitchen`.
+5. Open the manufacture/consumption Stock Entry linked to the Work Order.
+   Confirm raw materials are consumed from `Central Kitchen` and the finished
+   menu item is produced there.
+6. Open the `Delivery Note`. Confirm the delivered item is the finished food,
    the warehouse is the requesting outlet, and the brand cost center is set.
-6. Open the linked `Sales Invoice`. Confirm the customer, BDT selling price,
+7. Open the linked `Sales Invoice`. Confirm the customer, BDT selling price,
    brand cost center, and submitted status. The invoice should remain
    outstanding because the demo does not create Payment Entries.
-7. Check `Stock Balance` or the stock ledger. Central Store should decrease by
+8. Check `Stock Balance` or the stock ledger. Central Store should decrease by
    transferred ingredients, Central Kitchen should show consumption and
    finished-food movement, and the outlet should receive the finished item.
-8. Check the `General Ledger` or profit and loss report filtered by each brand
+9. Check the `General Ledger` or profit and loss report filtered by each brand
    cost center. Revenue and stock-related accounting should be separated by
    brand.
 
 Expected result: each generated cycle contains one finished-item requisition,
-three stock entries (raw transfer, manufacture/consumption, finished transfer),
-one Delivery Note, and one Sales Invoice. A 100-cycle run should report
-`cycles_created: 100`, `Material Request: 100`, `Stock Entry: 300`,
+one submitted Work Order, three stock entries (raw transfer,
+manufacture/consumption, finished transfer), one Delivery Note, and one Sales
+Invoice. A 100-cycle run should report `cycles_created: 100`,
+`Material Request: 100`, `Work Order: 100`, `Stock Entry: 300`,
 `Delivery Note: 100`, and `Sales Invoice: 100`.
 
 ## Demo Checklist
@@ -171,6 +178,7 @@ Show these in ERPNext:
 - POS Profile: one profile per brand
 - Item: filter `BDREST-` to show menu and ingredient items
 - BOM: open a menu item BOM to show recipe/raw material consumption
+- Work Order: open kitchen production order and its BOM
 - Material Request: branch requisition for finished food item
 - Stock Entry: raw transfer, manufacture/consumption, finished transfer
 - Purchase Order / Purchase Receipt / Purchase Invoice: raw material supply

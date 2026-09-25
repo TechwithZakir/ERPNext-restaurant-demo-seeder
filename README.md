@@ -68,7 +68,7 @@ bench --site <demo-site> clear-cache
 ## Dry run
 
 ```bash
-bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.create_full_demo --cycles 100 --dry_run true
+bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.create_full_demo --kwargs "{'cycles': 100, 'dry_run': True}"
 ```
 
 ## Create the demo records
@@ -76,8 +76,8 @@ bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.create_ful
 Start with 10 cycles on a dedicated demo site, inspect the result, then run 100:
 
 ```bash
-bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.create_full_demo --cycles 10 --dry_run false --confirm_demo_site true
-bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.create_full_demo --cycles 100 --dry_run false --confirm_demo_site true
+bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.create_full_demo --kwargs "{'cycles': 10, 'dry_run': False, 'confirm_demo_site': True}"
+bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.create_full_demo --kwargs "{'cycles': 100, 'dry_run': False, 'confirm_demo_site': True}"
 ```
 
 Each cycle creates a brand requisition, raw-material transfer, BOM-based

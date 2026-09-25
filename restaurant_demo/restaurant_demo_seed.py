@@ -8,10 +8,10 @@ Copy this file into an installed custom app, for example:
 
 Then run from the bench directory:
 
-    bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.create_demo_setup --dry_run true
-    bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.create_demo_setup --dry_run false --confirm_demo_site true
-    bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.create_full_demo --cycles 100 --dry_run true
-    bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.create_full_demo --cycles 100 --dry_run false --confirm_demo_site true
+    bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.create_demo_setup --kwargs "{'dry_run': True}"
+    bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.create_demo_setup --kwargs "{'dry_run': False, 'confirm_demo_site': True}"
+    bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.create_full_demo --kwargs "{'cycles': 100, 'dry_run': True}"
+    bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.create_full_demo --kwargs "{'cycles': 100, 'dry_run': False, 'confirm_demo_site': True}"
 
 The setup command creates demo masters, local menu thumbnails, recipes (BOMs),
 opening stock, POS profiles, and draft requisitions. The full-demo command
@@ -289,6 +289,30 @@ def _cash_account(company):
     )
 
 
+def _opening_stock_difference_account(company):
+    """Return a Balance Sheet account accepted by opening Stock Reconciliation."""
+    company_doc = frappe.get_doc("Company", company)
+    for account in (
+        getattr(company_doc, "default_inventory_account", None),
+        getattr(company_doc, "stock_received_but_not_billed", None),
+    ):
+        if account and frappe.db.get_value(
+            "Account",
+            {"name": account, "company": company, "is_group": 0, "disabled": 0, "root_type": ["in", ["Asset", "Liability"]]},
+            "name",
+        ):
+            return account
+
+    for filters in (
+        {"company": company, "account_type": "Stock", "is_group": 0, "disabled": 0, "root_type": "Asset"},
+        {"company": company, "is_group": 0, "disabled": 0, "root_type": ["in", ["Asset", "Liability"]]},
+    ):
+        account = frappe.db.get_value("Account", filters, "name", order_by="lft asc")
+        if account:
+            return account
+    return None
+
+
 def _ensure_mode_of_payment(label, mode_type, company, account):
     mode = _upsert_by_field("Mode of Payment", "mode_of_payment", label, {"type": mode_type, "enabled": 1})
     if _has_field("Mode of Payment", "accounts") and account:
@@ -546,6 +570,9 @@ def _ensure_bom(menu_item_code, company, components, central_kitchen):
 def _create_opening_stock(company, balances):
     """Submit one opening Stock Reconciliation per warehouse, once only."""
     created = []
+    difference_account = _opening_stock_difference_account(company)
+    if not difference_account:
+        frappe.throw("No leaf Asset or Liability account was found for opening stock difference accounting.")
     for warehouse, lines in balances.items():
         if not lines:
             continue
@@ -558,6 +585,7 @@ def _create_opening_stock(company, balances):
         _set(doc, "purpose", "Opening Stock")
         _set(doc, "posting_date", today())
         _set(doc, "remarks", marker)
+        _set(doc, "expense_account", difference_account)
         for item_code, qty, valuation_rate in lines:
             row = doc.append("items", {})
             _set(row, "item_code", item_code)
@@ -601,6 +629,8 @@ def _preflight(company):
             blockers.append("Required ERPNext DocType is unavailable: %s" % doctype)
     if not _cash_account(company):
         blockers.append("No non-group Cash account is configured for %s." % company)
+    if not _opening_stock_difference_account(company):
+        blockers.append("No leaf Asset or Liability account is available for opening stock difference accounting.")
     selling = frappe.get_single("Selling Settings")
     customer_group = getattr(selling, "customer_group", None) or frappe.db.get_value(
         "Customer Group", {"is_group": 0}, "name"

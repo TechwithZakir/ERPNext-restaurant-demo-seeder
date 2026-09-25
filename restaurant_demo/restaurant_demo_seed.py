@@ -1446,7 +1446,8 @@ def clear_demo_data(dry_run=True, confirm_demo_site=False):
     if dry_run:
         return {"writes": False, "records": {doctype: len(names) for doctype, names in plan.items()}, "names": plan}
 
-    result = {"cancelled": {}, "deleted": {}, "disabled": {}, "skipped": {}}
+    result = {"cancelled": {}, "deleted": {}, "disabled": {}, "pending_retry": {}, "skipped": {}}
+    cancel_failed = set()
     for doctype in submitted_order:
         for name in plan.get(doctype, []):
             try:
@@ -1455,12 +1456,19 @@ def clear_demo_data(dry_run=True, confirm_demo_site=False):
                     doc.cancel()
                     result["cancelled"].setdefault(doctype, []).append(name)
             except Exception as exc:
-                result["skipped"].setdefault(doctype, []).append("%s: %s" % (name, exc))
+                cancel_failed.add((doctype, name))
+                message = str(exc)
+                if doctype == "Repost Item Valuation" and "try again in an hour" in message.lower():
+                    result["pending_retry"].setdefault(doctype, []).append("%s: %s" % (name, message))
+                else:
+                    result["skipped"].setdefault(doctype, []).append("%s: %s" % (name, message))
 
     for doctype in draft_order:
         for name in plan.get(doctype, []):
             try:
                 if frappe.db.exists(doctype, name):
+                    if (doctype, name) in cancel_failed and (frappe.db.get_value(doctype, name, "docstatus") or 0) == 1:
+                        continue
                     frappe.delete_doc(doctype, name, ignore_permissions=True, force=True)
                     result["deleted"].setdefault(doctype, []).append(name)
             except Exception as exc:
@@ -1474,5 +1482,6 @@ def clear_demo_data(dry_run=True, confirm_demo_site=False):
         "cancelled": {doctype: len(names) for doctype, names in result["cancelled"].items()},
         "deleted": {doctype: len(names) for doctype, names in result["deleted"].items()},
         "disabled": {doctype: len(names) for doctype, names in result["disabled"].items()},
+        "pending_retry": result["pending_retry"],
         "skipped": result["skipped"],
     }

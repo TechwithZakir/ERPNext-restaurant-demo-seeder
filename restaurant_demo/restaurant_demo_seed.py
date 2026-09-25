@@ -143,11 +143,60 @@ def _demo_name_filters(doctype):
 def _demo_doc_names(doctype):
     names = []
     seen = set()
+
+    def add(name):
+        if name and name not in seen:
+            seen.add(name)
+            names.append(name)
+
     for filters in _demo_name_filters(doctype):
         for name in frappe.get_all(doctype, filters=filters, pluck="name", limit=10000):
-            if name not in seen:
-                seen.add(name)
-                names.append(name)
+            add(name)
+
+    child_tables = {
+        "Material Request": "Material Request Item",
+        "Stock Entry": "Stock Entry Detail",
+        "Delivery Note": "Delivery Note Item",
+        "Sales Invoice": "Sales Invoice Item",
+        "Purchase Order": "Purchase Order Item",
+        "Purchase Receipt": "Purchase Receipt Item",
+        "Purchase Invoice": "Purchase Invoice Item",
+        "Stock Reconciliation": "Stock Reconciliation Item",
+    }
+    child_doctype = child_tables.get(doctype)
+    if child_doctype and frappe.db.exists("DocType", child_doctype):
+        for fieldname, pattern in (("item_code", "BDREST-%"), ("warehouse", "DEMO -%"), ("s_warehouse", "DEMO -%"), ("t_warehouse", "DEMO -%")):
+            if _has_field(child_doctype, fieldname):
+                for row in frappe.get_all(
+                    child_doctype,
+                    filters={fieldname: ["like", pattern]},
+                    fields=["parent"],
+                    limit=10000,
+                ):
+                    add(row.parent)
+
+    if doctype == "Bin":
+        for name in frappe.get_all(
+            "Bin",
+            filters={"item_code": ["like", "BDREST-%"]},
+            pluck="name",
+            limit=10000,
+        ):
+            add(name)
+        for name in frappe.get_all(
+            "Bin",
+            filters={"warehouse": ["like", "DEMO -%"]},
+            pluck="name",
+            limit=10000,
+        ):
+            add(name)
+
+    if doctype == "Repost Item Valuation":
+        for fieldname in ("item_code", "warehouse"):
+            if _has_field(doctype, fieldname):
+                pattern = "BDREST-%" if fieldname == "item_code" else "DEMO -%"
+                for name in frappe.get_all(doctype, filters={fieldname: ["like", pattern]}, pluck="name", limit=10000):
+                    add(name)
     return names
 
 
@@ -1351,6 +1400,7 @@ def clear_demo_data(dry_run=True, confirm_demo_site=False):
         frappe.throw("Refusing to clear demo data without confirm_demo_site=True. Use a dedicated demo site.")
 
     submitted_order = [
+        "Repost Item Valuation",
         "Sales Invoice",
         "Delivery Note",
         "Stock Entry",
@@ -1365,6 +1415,7 @@ def clear_demo_data(dry_run=True, confirm_demo_site=False):
         "POS Profile",
         "Item Price",
         "File",
+        "Bin",
         "Item",
         "Price List",
         "Customer",

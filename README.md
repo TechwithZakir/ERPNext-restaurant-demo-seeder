@@ -79,7 +79,8 @@ Preview what will be cancelled/deleted:
 bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.clear_demo_data --kwargs "{'dry_run': True}"
 ```
 
-Clear only demo-prefixed records and `BDREST-` items from a dedicated demo site:
+Clear only demo-prefixed records, `BDREST-` item records, and transactions whose
+child rows reference demo items or demo warehouses from a dedicated demo site:
 
 ```bash
 bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.clear_demo_data --kwargs "{'dry_run': False, 'confirm_demo_site': True}"

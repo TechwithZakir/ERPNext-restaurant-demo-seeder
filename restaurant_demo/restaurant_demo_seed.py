@@ -380,10 +380,29 @@ def _ensure_tree_record(doctype, label_field, label, parent_field, parent, compa
     if company and _has_field(doctype, "company"):
         filters["company"] = company
     existing = frappe.db.get_value(doctype, filters, "name")
+
+    # Cleanup can archive a demo tree record by changing its visible label,
+    # while ERPNext keeps the original document name. Reuse that record so a
+    # later seed remains idempotent and does not collide on the primary key.
+    if not existing:
+        candidate_names = [label]
+        if company and doctype in ("Warehouse", "Cost Center"):
+            company_abbr = frappe.db.get_value("Company", company, "abbr")
+            if company_abbr:
+                candidate_names.append("%s - %s" % (label, company_abbr))
+        for candidate in candidate_names:
+            if frappe.db.exists(doctype, candidate):
+                existing = candidate
+                break
+
     if existing:
         doc = frappe.get_doc(doctype, existing)
+        _set(doc, label_field, label)
         _set(doc, parent_field, parent)
         _set(doc, "is_group", 0)
+        _set(doc, "disabled", 0)
+        if company:
+            _set(doc, "company", company)
         doc.save(ignore_permissions=True)
         return doc
     doc = frappe.new_doc(doctype)

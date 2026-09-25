@@ -11,11 +11,17 @@ Use the same Frappe and ERPNext major branch already used by your bench, such as
 Point of Sale; this app does not need a separate POS repository. If your site
 uses a third-party POS app, install that app from its own compatible Git repo.
 
-Install the app from that Git repository, from the bench directory:
+## Clean install
+
+Install the app from the bench directory. This app has no frontend assets, so
+use `--skip-assets` to avoid running an unnecessary Frappe asset build.
 
 ```bash
-bench get-app restaurant_demo https://github.com/TechwithZakir/ERPNext-restaurant-demo-seeder.git
+cd ~/frappe-bench
+bench get-app --skip-assets restaurant_demo https://github.com/TechwithZakir/ERPNext-restaurant-demo-seeder.git
 bench --site <demo-site> install-app restaurant_demo
+bench --site <demo-site> migrate
+bench --site <demo-site> clear-cache
 ```
 
 Your bench must already have Frappe and ERPNext installed on that same branch.
@@ -23,10 +29,34 @@ Bench `get-app` fetches an app from Git; `install-app` installs it on a site.
 The `restaurant_demo` name before the Git URL tells bench to clone the repo
 directly into `apps/restaurant_demo`.
 
-If `bench get-app` fails with `Directory not empty` while renaming
-`apps/ERPNext-restaurant-demo-seeder` to `apps/restaurant_demo`, the app folder
-already exists in that bench. Do not run `get-app` again; update the existing
-app instead:
+## Recover a partial install
+
+If an earlier install failed, clean the partial app folders first, then run the
+clean install commands again:
+
+```bash
+cd ~/frappe-bench
+rm -rf apps/restaurant_demo
+rm -rf apps/ERPNext-restaurant-demo-seeder
+sed -i '/^restaurant_demo$/d' sites/apps.txt
+bench get-app --skip-assets restaurant_demo https://github.com/TechwithZakir/ERPNext-restaurant-demo-seeder.git
+bench --site <demo-site> install-app restaurant_demo
+bench --site <demo-site> migrate
+bench --site <demo-site> clear-cache
+```
+
+If `sites/apps.txt` was edited manually, make sure each app is on its own line.
+For example, fix a joined line such as `telephonyrestaurant_demo` before running
+bench commands:
+
+```bash
+sed -i 's/telephonyrestaurant_demo/telephony\nrestaurant_demo/' sites/apps.txt
+```
+
+## Update an existing install
+
+If `apps/restaurant_demo` already exists and is the installed app folder, do not
+run `get-app` again. Pull the existing app and migrate:
 
 ```bash
 cd ~/frappe-bench

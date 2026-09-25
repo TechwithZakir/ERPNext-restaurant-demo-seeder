@@ -1,7 +1,7 @@
-# Bangladesh Restaurant Demo Seeder (ERPNext)
+# ERPNext Restaurant Demo Seeder
 
 This is a Git-installable Frappe app containing the demo data seeder. It prepares
-four Bangladesh restaurant brands, POS profiles, menu items with generated local
+four restaurant brands, POS profiles, menu items with generated local
 image thumbnails, recipes/BOMs, stock, and repeatable full transaction cycles.
 
 ## Version alignment

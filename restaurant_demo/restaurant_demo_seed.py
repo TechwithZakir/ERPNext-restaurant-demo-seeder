@@ -12,6 +12,7 @@ Then run from the bench directory:
     bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.create_demo_setup --kwargs "{'dry_run': False, 'confirm_demo_site': True}"
     bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.create_full_demo --kwargs "{'cycles': 100, 'dry_run': True}"
     bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.create_full_demo --kwargs "{'cycles': 100, 'dry_run': False, 'confirm_demo_site': True}"
+    bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.update_demo_item_names --kwargs "{'dry_run': False, 'confirm_demo_site': True}"
 
 The setup command creates demo masters, local menu thumbnails, recipes (BOMs),
 opening stock, POS profiles, and draft requisitions. The full-demo command
@@ -578,6 +579,40 @@ def _ensure_item(code, label, uom, group, warehouse, standard_rate, is_stock_ite
         _apply_fields(item, fields)
         item.insert(ignore_permissions=True)
     return item
+
+
+def _demo_item_labels():
+    labels = {"BDREST-%s" % code: label for code, label, *_rest in INGREDIENTS}
+    labels.update(
+        {
+            "BDREST-%s-M%02d" % (brand_key, index): label
+            for index, (brand_key, label, _price, _color, _components) in enumerate(MENUS, start=1)
+        }
+    )
+    return labels
+
+
+def update_demo_item_names(dry_run=True, confirm_demo_site=False):
+    """Update existing demo item names while preserving stable item codes."""
+    if not dry_run and not confirm_demo_site:
+        frappe.throw("Refusing to update demo items without confirm_demo_site=True. Use a dedicated demo site.")
+
+    changes = []
+    for item_code, expected_name in _demo_item_labels().items():
+        if not frappe.db.exists("Item", item_code):
+            continue
+        current_name = frappe.db.get_value("Item", item_code, "item_name")
+        if current_name == expected_name:
+            continue
+        changes.append({"item_code": item_code, "from": current_name, "to": expected_name})
+        if not dry_run:
+            item = frappe.get_doc("Item", item_code)
+            item.item_name = expected_name
+            item.save(ignore_permissions=True)
+
+    if not dry_run:
+        frappe.db.commit()
+    return {"writes": not dry_run, "updated": len(changes), "changes": changes}
 
 
 def _ensure_item_price(item_code, price_list, rate, uom, selling=True):

@@ -87,6 +87,18 @@ Full demo:
 bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.create_full_demo --kwargs "{'cycles': 100, 'dry_run': False, 'confirm_demo_site': True}"
 ```
 
+If an older seed run displayed codes such as `BDREST-B04-M12` as the Item
+Name, update the existing records once. Item codes remain unchanged so BOMs,
+stock entries, and invoices keep their links:
+
+```bash
+bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.update_demo_item_names --kwargs "{'dry_run': True}"
+bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.update_demo_item_names --kwargs "{'dry_run': False, 'confirm_demo_site': True}"
+```
+
+After this update, examples include `Beef Tehari`, `Lemon Mint Cooler`,
+`Basmati Rice`, and `Cooking Oil` as visible Item Names.
+
 ## Delete/Clean Demo Data
 
 Preview the records selected for cleanup before changing anything:

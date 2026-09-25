@@ -595,13 +595,20 @@ def _create_opening_stock(company, balances):
         exists = _get_demo_doc("Stock Reconciliation", marker, docstatus=1)
         if exists:
             continue
+        changed_lines = []
+        for item_code, qty, valuation_rate in lines:
+            current_qty = frappe.db.get_value("Bin", {"item_code": item_code, "warehouse": warehouse}, "actual_qty") or 0
+            if abs(float(current_qty) - float(qty)) > 0.0001:
+                changed_lines.append((item_code, qty, valuation_rate))
+        if not changed_lines:
+            continue
         doc = frappe.new_doc("Stock Reconciliation")
         _set(doc, "company", company)
         _set(doc, "purpose", "Opening Stock")
         _set(doc, "posting_date", today())
         _set(doc, "remarks", marker)
         _set(doc, "expense_account", difference_account)
-        for item_code, qty, valuation_rate in lines:
+        for item_code, qty, valuation_rate in changed_lines:
             row = doc.append("items", {})
             _set(row, "item_code", item_code)
             _set(row, "warehouse", warehouse)

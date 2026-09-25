@@ -197,6 +197,16 @@ def _demo_doc_names(doctype):
                 pattern = "BDREST-%" if fieldname == "item_code" else "DEMO -%"
                 for name in frappe.get_all(doctype, filters={fieldname: ["like", pattern]}, pluck="name", limit=10000):
                     add(name)
+
+    if doctype == "POS Profile":
+        for fieldname in ("warehouse", "name", "title"):
+            if _has_field(doctype, fieldname):
+                for name in frappe.get_all(doctype, filters={fieldname: ["like", "DEMO -%"]}, pluck="name", limit=10000):
+                    add(name)
+        for child_doctype, fieldname in (("POS Profile Item Group", "item_group"),):
+            if frappe.db.exists("DocType", child_doctype) and _has_field(child_doctype, fieldname):
+                for row in frappe.get_all(child_doctype, filters={fieldname: ["like", "DEMO -%"]}, fields=["parent"], limit=10000):
+                    add(row.parent)
     return names
 
 
@@ -205,6 +215,8 @@ def _disable_demo_doc(doctype, name):
         return False
     doc = frappe.get_doc(doctype, name)
     doc.disabled = 1
+    if doctype == "Warehouse" and _has_field("Warehouse", "warehouse_name") and not (doc.warehouse_name or "").startswith("ARCHIVED - "):
+        doc.warehouse_name = "ARCHIVED - " + doc.warehouse_name
     doc.save(ignore_permissions=True)
     return True
 

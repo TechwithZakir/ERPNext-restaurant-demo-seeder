@@ -606,9 +606,10 @@ def update_demo_item_names(dry_run=True, confirm_demo_site=False):
             continue
         changes.append({"item_code": item_code, "from": current_name, "to": expected_name})
         if not dry_run:
-            item = frappe.get_doc("Item", item_code)
-            item.item_name = expected_name
-            item.save(ignore_permissions=True)
+            # Some ERPNext versions normalize Item fields during save and can
+            # restore the code as the visible name. Update the field directly
+            # so this one-time migration persists across versions.
+            frappe.db.set_value("Item", item_code, "item_name", expected_name, update_modified=True)
 
     if not dry_run:
         frappe.db.commit()

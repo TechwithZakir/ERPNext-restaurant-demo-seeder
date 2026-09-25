@@ -83,6 +83,17 @@ bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.clear_demo
 bench --site <demo-site> clear-cache
 ```
 
+For a dedicated disposable demo site, hard-delete all selected demo records,
+including records blocked by submitted-document or repost-processing locks:
+
+```bash
+bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.clear_demo_data --kwargs "{'dry_run': False, 'hard_delete': True, 'confirm_demo_site': True}"
+bench --site <demo-site> clear-cache
+```
+
+Hard delete removes demo-linked stock, GL, and payment ledger rows. Do not run
+it on a production site or a company containing real transactions.
+
 ERPNext may keep or block cancellation of audit-sensitive records such as Stock
 Ledger Entry, GL Entry, warehouses with ledger history, or Repost Item Valuation
 while background reposting is still running. In that case, rerun cleanup after

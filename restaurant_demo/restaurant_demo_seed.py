@@ -1421,11 +1421,68 @@ def create_full_demo(cycles=100, dry_run=True, confirm_demo_site=False, company=
     }
 
 
-def clear_demo_data(dry_run=True, confirm_demo_site=False):
+def _hard_delete_doc(doctype, name):
+    """Remove one demo document even when ERPNext blocks normal cancellation."""
+    if not frappe.db.exists(doctype, name):
+        return False
+
+    # Try Frappe's delete first so hooks and file cleanup still run when
+    # possible. Submitted documents may still be blocked, so the SQL fallback
+    # is deliberately limited to records already selected as demo-owned.
+    try:
+        frappe.delete_doc(doctype, name, ignore_permissions=True, force=True)
+        return True
+    except Exception:
+        meta = frappe.get_meta(doctype)
+        for table_field in meta.get_table_fields():
+            child_doctype = table_field.options
+            if child_doctype and frappe.db.exists("DocType", child_doctype):
+                frappe.db.sql(
+                    "delete from `tab%s` where parent = %%s" % child_doctype.replace("`", ""),
+                    name,
+                )
+        frappe.db.sql(
+            "delete from `tab%s` where name = %%s" % doctype.replace("`", ""),
+            name,
+        )
+        return True
+
+
+def _hard_delete_demo_ledgers(plan):
+    """Delete ledger rows belonging only to this demo's selected records."""
+    voucher_pairs = []
+    for doctype, names in plan.items():
+        for name in names:
+            voucher_pairs.append((doctype, name))
+
+    for ledger_doctype in ("Stock Ledger Entry", "GL Entry", "Payment Ledger Entry"):
+        if not frappe.db.exists("DocType", ledger_doctype):
+            continue
+        meta = frappe.get_meta(ledger_doctype)
+        if _has_field(ledger_doctype, "voucher_type") and _has_field(ledger_doctype, "voucher_no"):
+            for voucher_type, voucher_no in voucher_pairs:
+                frappe.db.delete(
+                    ledger_doctype,
+                    {"voucher_type": voucher_type, "voucher_no": voucher_no},
+                )
+        if ledger_doctype == "Stock Ledger Entry":
+            conditions = []
+            if _has_field(ledger_doctype, "item_code"):
+                conditions.append("item_code like 'BDREST-%%'")
+            if _has_field(ledger_doctype, "warehouse"):
+                conditions.append("warehouse like 'DEMO -%%'")
+            if conditions:
+                frappe.db.sql(
+                    "delete from `tabStock Ledger Entry` where %s" % " or ".join(conditions)
+                )
+
+
+def clear_demo_data(dry_run=True, confirm_demo_site=False, hard_delete=False):
     """Cancel/delete records created by this demo seeder.
 
     This targets only demo-prefixed records and BDREST items. Use on a dedicated
     demo site; cancelled/deleted stock and accounting documents affect ledgers.
+    Set hard_delete=True only when the demo site must be completely reset.
     """
     if not dry_run and not confirm_demo_site:
         frappe.throw("Refusing to clear demo data without confirm_demo_site=True. Use a dedicated demo site.")
@@ -1465,11 +1522,15 @@ def clear_demo_data(dry_run=True, confirm_demo_site=False):
     if dry_run:
         return {"writes": False, "records": {doctype: len(names) for doctype, names in plan.items()}, "names": plan}
 
-    result = {"cancelled": {}, "deleted": {}, "disabled": {}, "pending_retry": {}, "skipped": {}}
+    result = {"cancelled": {}, "deleted": {}, "disabled": {}, "hard_deleted": {}, "pending_retry": {}, "skipped": {}}
+    if hard_delete:
+        _hard_delete_demo_ledgers(plan)
     cancel_failed = set()
     for doctype in submitted_order:
         for name in plan.get(doctype, []):
             try:
+                if hard_delete:
+                    continue
                 doc = frappe.get_doc(doctype, name)
                 if getattr(doc, "docstatus", 0) == 1:
                     doc.cancel()
@@ -1486,6 +1547,10 @@ def clear_demo_data(dry_run=True, confirm_demo_site=False):
         for name in plan.get(doctype, []):
             try:
                 if frappe.db.exists(doctype, name):
+                    if hard_delete:
+                        if _hard_delete_doc(doctype, name):
+                            result["hard_deleted"].setdefault(doctype, []).append(name)
+                        continue
                     if (doctype, name) in cancel_failed and (frappe.db.get_value(doctype, name, "docstatus") or 0) == 1:
                         continue
                     frappe.delete_doc(doctype, name, ignore_permissions=True, force=True)
@@ -1500,6 +1565,7 @@ def clear_demo_data(dry_run=True, confirm_demo_site=False):
         "writes": True,
         "cancelled": {doctype: len(names) for doctype, names in result["cancelled"].items()},
         "deleted": {doctype: len(names) for doctype, names in result["deleted"].items()},
+        "hard_deleted": {doctype: len(names) for doctype, names in result["hard_deleted"].items()},
         "disabled": {doctype: len(names) for doctype, names in result["disabled"].items()},
         "pending_retry": result["pending_retry"],
         "skipped": result["skipped"],

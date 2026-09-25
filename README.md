@@ -11,24 +11,10 @@ Use the same Frappe and ERPNext major branch already used by your bench, such as
 Point of Sale; this app does not need a separate POS repository. If your site
 uses a third-party POS app, install that app from its own compatible Git repo.
 
-## Install from your Git repository
-
-First publish the source folder to your Git host (replace the URL with your
-repository):
+Install the app from that Git repository, from the bench directory:
 
 ```bash
-cd restaurant_demo_git_app
-git init -b main
-git add .
-git commit -m "Add Bangladesh restaurant demo seeder"
-git remote add origin https://github.com/<your-org>/restaurant_demo.git
-git push -u origin main
-```
-
-Then install the app from that Git repository, from the bench directory:
-
-```bash
-bench get-app --branch https://github.com[/<your-org>/restaurant_demo](https://github.com/TechwithZakir/ERPNext-restaurant-demo-seeder.git
+bench get-app --branch https://github.com/TechwithZakir/ERPNext-restaurant-demo-seeder.git
 bench --site <demo-site> install-app restaurant_demo
 ```
 

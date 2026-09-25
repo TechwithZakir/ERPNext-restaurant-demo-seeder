@@ -71,6 +71,21 @@ bench --site <demo-site> clear-cache
 bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.create_full_demo --kwargs "{'cycles': 100, 'dry_run': True}"
 ```
 
+## Clear demo data
+
+Preview what will be cancelled/deleted:
+
+```bash
+bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.clear_demo_data --kwargs "{'dry_run': True}"
+```
+
+Clear only demo-prefixed records and `BDREST-` items from a dedicated demo site:
+
+```bash
+bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.clear_demo_data --kwargs "{'dry_run': False, 'confirm_demo_site': True}"
+bench --site <demo-site> clear-cache
+```
+
 ## Create the demo records
 
 Start with a 2-cycle smoke test on a dedicated demo site, inspect the result,

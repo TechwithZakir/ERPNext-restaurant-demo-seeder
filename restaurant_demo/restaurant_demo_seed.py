@@ -108,6 +108,49 @@ def _get_demo_doc(doctype, marker, docstatus=None, title=None, title_like=None):
     return frappe.db.get_value(doctype, filters, "name")
 
 
+def _demo_name_filters(doctype):
+    filters = []
+    if _has_field(doctype, "remarks"):
+        filters.append({"remarks": ["like", DEMO_PREFIX + "%"]})
+    if _has_field(doctype, "title"):
+        filters.append({"title": ["like", DEMO_PREFIX + "%"]})
+    if _has_field(doctype, "item_code"):
+        filters.append({"item_code": ["like", "BDREST-%"]})
+    if _has_field(doctype, "item_name"):
+        filters.append({"item_name": ["like", DEMO_PREFIX + "%"]})
+    label_fields = {
+        "POS Profile": "name",
+        "Warehouse": "warehouse_name",
+        "Cost Center": "cost_center_name",
+        "Item Group": "item_group_name",
+        "Price List": "price_list_name",
+        "Customer": "customer_name",
+        "Supplier": "supplier_name",
+        "BOM": "item",
+        "File": "file_name",
+    }
+    label_field = label_fields.get(doctype)
+    if label_field and _has_field(doctype, label_field):
+        if doctype == "BOM":
+            filters.append({label_field: ["like", "BDREST-%"]})
+        elif doctype == "File":
+            filters.append({label_field: ["like", "demo_restaurant_%"]})
+        else:
+            filters.append({label_field: ["like", "DEMO -%"]})
+    return filters
+
+
+def _demo_doc_names(doctype):
+    names = []
+    seen = set()
+    for filters in _demo_name_filters(doctype):
+        for name in frappe.get_all(doctype, filters=filters, pluck="name", limit=10000):
+            if name not in seen:
+                seen.add(name)
+                names.append(name)
+    return names
+
+
 def _apply_fields(doc, fields):
     for fieldname, value in fields.items():
         _set(doc, fieldname, value)
@@ -1286,4 +1329,74 @@ def create_full_demo(cycles=100, dry_run=True, confirm_demo_site=False, company=
         "created_documents": counts,
         "first_created_cycles": examples,
         "note": "Invoices are submitted and receivable remains open. Stock transfers, recipe consumption and sales accounting are posted; no cash Payment Entries are created.",
+    }
+
+
+def clear_demo_data(dry_run=True, confirm_demo_site=False):
+    """Cancel/delete records created by this demo seeder.
+
+    This targets only demo-prefixed records and BDREST items. Use on a dedicated
+    demo site; cancelled/deleted stock and accounting documents affect ledgers.
+    """
+    if not dry_run and not confirm_demo_site:
+        frappe.throw("Refusing to clear demo data without confirm_demo_site=True. Use a dedicated demo site.")
+
+    submitted_order = [
+        "Sales Invoice",
+        "Delivery Note",
+        "Stock Entry",
+        "Purchase Invoice",
+        "Purchase Receipt",
+        "Purchase Order",
+        "Material Request",
+        "Stock Reconciliation",
+        "BOM",
+    ]
+    draft_order = submitted_order + [
+        "POS Profile",
+        "Item Price",
+        "File",
+        "Item",
+        "Price List",
+        "Customer",
+        "Supplier",
+        "Warehouse",
+        "Cost Center",
+        "Item Group",
+    ]
+
+    plan = {}
+    for doctype in draft_order:
+        if frappe.db.exists("DocType", doctype):
+            names = _demo_doc_names(doctype)
+            if names:
+                plan[doctype] = names
+    if dry_run:
+        return {"writes": False, "records": {doctype: len(names) for doctype, names in plan.items()}, "names": plan}
+
+    result = {"cancelled": {}, "deleted": {}, "skipped": {}}
+    for doctype in submitted_order:
+        for name in plan.get(doctype, []):
+            try:
+                doc = frappe.get_doc(doctype, name)
+                if getattr(doc, "docstatus", 0) == 1:
+                    doc.cancel()
+                    result["cancelled"].setdefault(doctype, []).append(name)
+            except Exception as exc:
+                result["skipped"].setdefault(doctype, []).append("%s: %s" % (name, exc))
+
+    for doctype in draft_order:
+        for name in plan.get(doctype, []):
+            try:
+                if frappe.db.exists(doctype, name):
+                    frappe.delete_doc(doctype, name, ignore_permissions=True, force=True)
+                    result["deleted"].setdefault(doctype, []).append(name)
+            except Exception as exc:
+                result["skipped"].setdefault(doctype, []).append("%s: %s" % (name, exc))
+    frappe.db.commit()
+    return {
+        "writes": True,
+        "cancelled": {doctype: len(names) for doctype, names in result["cancelled"].items()},
+        "deleted": {doctype: len(names) for doctype, names in result["deleted"].items()},
+        "skipped": result["skipped"],
     }

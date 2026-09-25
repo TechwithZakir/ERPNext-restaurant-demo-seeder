@@ -137,6 +137,10 @@ def _demo_name_filters(doctype):
             filters.append({label_field: ["like", "demo_restaurant_%"]})
         else:
             filters.append({label_field: ["like", "DEMO -%"]})
+    if doctype in ("Warehouse", "Cost Center", "POS Profile"):
+        filters.append({"name": ["like", "DEMO -%"]})
+    if doctype == "Warehouse" and _has_field(doctype, "warehouse_name"):
+        filters.append({"warehouse_name": ["like", "ARCHIVED - DEMO -%"]})
     return filters
 
 
@@ -1517,6 +1521,9 @@ def clear_demo_data(dry_run=True, confirm_demo_site=False, hard_delete=False):
     for doctype in draft_order:
         if frappe.db.exists("DocType", doctype):
             names = _demo_doc_names(doctype)
+            if doctype == "Warehouse":
+                # Delete outlet/child warehouses before their parent nodes.
+                names.sort(key=lambda name: frappe.db.get_value("Warehouse", name, "lft") or 0, reverse=True)
             if names:
                 plan[doctype] = names
     if dry_run:

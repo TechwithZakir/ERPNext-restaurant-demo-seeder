@@ -67,38 +67,6 @@ bench --site <demo-site> migrate
 bench --site <demo-site> clear-cache
 ```
 
-## Clear Demo Data
-
-Preview cleanup first:
-
-```bash
-bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.clear_demo_data --kwargs "{'dry_run': True}"
-```
-
-Clear demo-prefixed records, `BDREST-` items, and transactions whose child rows
-reference demo items or demo warehouses:
-
-```bash
-bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.clear_demo_data --kwargs "{'dry_run': False, 'confirm_demo_site': True}"
-bench --site <demo-site> clear-cache
-```
-
-For a dedicated disposable demo site, hard-delete all selected demo records,
-including records blocked by submitted-document or repost-processing locks:
-
-```bash
-bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.clear_demo_data --kwargs "{'dry_run': False, 'hard_delete': True, 'confirm_demo_site': True}"
-bench --site <demo-site> clear-cache
-```
-
-Hard delete removes demo-linked stock, GL, and payment ledger rows. Do not run
-it on a production site or a company containing real transactions.
-
-ERPNext may keep or block cancellation of audit-sensitive records such as Stock
-Ledger Entry, GL Entry, warehouses with ledger history, or Repost Item Valuation
-while background reposting is still running. In that case, rerun cleanup after
-ERPNext finishes background processing.
-
 ## Seed Demo Data
 
 Dry run:
@@ -118,6 +86,29 @@ Full demo:
 ```bash
 bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.create_full_demo --kwargs "{'cycles': 100, 'dry_run': False, 'confirm_demo_site': True}"
 ```
+
+## Delete/Clean Demo Data
+
+Preview the records selected for cleanup before changing anything:
+
+```bash
+bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.clear_demo_data --kwargs "{'dry_run': True}"
+```
+
+For a disposable demo site, hard-delete the seeded transactions, ledger rows,
+items, POS Profiles, warehouses, and related masters:
+
+```bash
+bench --site <demo-site> execute restaurant_demo.restaurant_demo_seed.clear_demo_data --kwargs "{'dry_run': False, 'hard_delete': True, 'confirm_demo_site': True}"
+bench --site <demo-site> clear-cache
+```
+
+Hard delete also removes demo-linked stock, GL, and payment ledger rows and
+handles archived warehouse names. Never run it on a production site or a
+company containing real transactions.
+
+For a non-destructive cleanup attempt, omit `hard_delete`; ERPNext may retain
+records blocked by submitted-document or repost-processing locks.
 
 ## Demo Checklist
 
